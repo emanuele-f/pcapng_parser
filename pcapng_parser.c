@@ -1,7 +1,7 @@
 /*
  * pcapng_parser
  * 
- * 2022 - Emanuele Faranda
+ * (C) 2022 - Emanuele Faranda
  *
  * https://datatracker.ietf.org/doc/draft-tuexen-opsawg-pcapng
  */
