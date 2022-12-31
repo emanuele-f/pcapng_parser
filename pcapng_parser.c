@@ -324,8 +324,9 @@ int main(int argc, char *argv[]) {
 		pcapng_hdr_block_t hdr_block;
 		_read(&hdr_block, sizeof(hdr_block));
 		
-		printf("[Type: 0x%08x (%s), Len: %u]\n", hdr_block.type,
-							block_type_str(hdr_block.type), hdr_block.total_length);
+		printf("[+%08lx] %s (0x%08x), Len: %u\n", ftell(inputf) - sizeof(hdr_block),
+							block_type_str(hdr_block.type), hdr_block.type,
+							hdr_block.total_length);
 		if(first_block) {
 			assert(hdr_block.type == BLOCK_TYPE_SHB);
 			first_block = 0;
