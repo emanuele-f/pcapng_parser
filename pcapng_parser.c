@@ -80,10 +80,6 @@ typedef struct pcapng_enh_packet_block {
 
 #define MIN_BLOCK_SIZE (sizeof(pcapng_hdr_block_t) + 4)
 #define MAX_BLOCK_SIZE (16*1024*1024)	// safety guard
-#define MIN_SHB_SIZE   (MIN_BLOCK_SIZE + sizeof(pcapng_section_hdr_block_t))
-#define MIN_IDB_SIZE   (MIN_BLOCK_SIZE + sizeof(pcapng_intf_descr_block_t))
-#define MIN_EPB_SIZE   (MIN_BLOCK_SIZE + sizeof(pcapng_enh_packet_block_t))
-#define MIN_DSB_SIZE   (MIN_BLOCK_SIZE + sizeof(pcapng_decr_secrets_block_t))
 
 static FILE *inputf = NULL;
 static uint32_t snaplen = 0;
@@ -186,7 +182,7 @@ static uint32_t _read(void *dst, uint32_t size) {
 static void read_section_header_block(uint32_t body_len) {
 	pcapng_section_hdr_block_t sect_block;
 
-	assert(body_len >= MIN_SHB_SIZE);
+	assert(body_len >= sizeof(sect_block));
 	body_len -= _read(&sect_block, sizeof(sect_block));
 
 	printf("  SHB v%u.%u - Len: ", sect_block.version_major,
@@ -215,7 +211,7 @@ static void read_section_header_block(uint32_t body_len) {
 static void read_interface_description_block(uint32_t body_len) {
 	pcapng_intf_descr_block_t intf_block;
 
-	assert(body_len >= MIN_IDB_SIZE);
+	assert(body_len >= sizeof(intf_block));
 	body_len -= _read(&intf_block, sizeof(intf_block));
 
 	printf("  IDB - Linktype: %s (%u), Snaplen: %u\n",
@@ -246,7 +242,7 @@ static void read_interface_description_block(uint32_t body_len) {
 static void read_enhanced_packet_block(uint32_t body_len, uint8_t verbose) {
 	pcapng_enh_packet_block_t pkt_block;
 
-	assert(body_len >= MIN_EPB_SIZE);
+	assert(body_len >= sizeof(pkt_block));
 	body_len -= _read(&pkt_block, sizeof(pkt_block));
 
 	// TODO read if_tsresol, support nanosecond resolution
@@ -276,7 +272,7 @@ static void read_enhanced_packet_block(uint32_t body_len, uint8_t verbose) {
 static void read_decryption_secrets_block(uint32_t body_len, uint8_t verbose) {
 	pcapng_decr_secrets_block_t sec_block;
 
-	assert(body_len >= MIN_DSB_SIZE);
+	assert(body_len >= sizeof(sec_block));
 	body_len -= _read(&sec_block, sizeof(sec_block));
 
 	printf("  DSB - Type: %s (0x%08x), Len: %u\n",
