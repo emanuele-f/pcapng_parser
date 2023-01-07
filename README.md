@@ -10,7 +10,6 @@ Current limitations (todos):
 - Does not support different byte order
 - Only 1 *Interface Description Block* is supported
 - Microseconds timestamps are assumed
-- Blocks options are not parsed
 
 Example usage: `pcapng_parser samples/chrome-cloudflare-quic-with-secrets.pcapng`
 

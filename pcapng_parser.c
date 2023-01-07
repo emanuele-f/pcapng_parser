@@ -28,28 +28,34 @@
 #define BLOCK_TYPE_SHB 0x0A0D0D0A /* Section Header Block */
 
 /* Secrets types */
-#define DSB_TYPE_TLS_KEYLOG 		0x544c534b
-#define DSB_TYPE_WIREGUARD_KEY 	0x57474b4c
+#define DSB_TYPE_TLS_KEYLOG 	0x544c534b
+#define DSB_TYPE_WIREGUARD_KEY	0x57474b4c
 
 #define SHB_MAGIC 0x1A2B3C4D
 
 /* ******************************************************* */
 
 // 3.1.  General Block Structure
-typedef struct pcapng_hdr_block {
+typedef struct pcapng_block_hdr {
 	uint32_t type;
 	uint32_t total_length;
-	//uint8_t *body;  								// variable length, padded to 32 bits
+	// uint8_t *body;  						// variable length, padded to 32 bits
 	// uint32_t total_length_2; 			// duplicated, to allow backward navigation
-} __attribute__((packed)) pcapng_hdr_block_t;
+} __attribute__((packed)) pcapng_block_hdr_t;
 
-typedef struct pcapng_section_hdr_block {
+typedef struct pcapng_block_opt {
+	uint16_t type;
+	uint16_t length;
+	/* ..opt_value.. */						// padded to 32 bits
+} __attribute__((packed)) pcapng_block_opt_t;
+
+typedef struct pcapng_section_block_hdr {
 	uint32_t magic;
 	uint16_t version_major;
 	uint16_t version_minor;
-	uint64_t section_length; 					// might be -1 for unknown
+	uint64_t section_length; 				// might be -1 for unknown
 	/* ..options.. */
-} __attribute__((packed)) pcapng_section_hdr_block_t;
+} __attribute__((packed)) pcapng_section_block_hdr_t;
 
 typedef struct pcapng_intf_descr_block {
 	uint16_t linktype;
@@ -78,7 +84,7 @@ typedef struct pcapng_enh_packet_block {
 
 /* ******************************************************* */
 
-#define MIN_BLOCK_SIZE (sizeof(pcapng_hdr_block_t) + 4)
+#define MIN_BLOCK_SIZE (sizeof(pcapng_block_hdr_t) + 4)
 #define MAX_BLOCK_SIZE (16*1024*1024)	// safety guard
 
 static FILE *inputf = NULL;
@@ -97,7 +103,7 @@ static const char* block_type_str(uint32_t tp) {
 		case BLOCK_TYPE_EPB:	return "Enhanced Packet Block";
 		case BLOCK_TYPE_DSB:	return "Decryption Secrets Block";
 		case BLOCK_TYPE_SHB:	return "Section Header Block";
-		default:							return "Unknown Block";
+		default:				return "Unknown Block";
 	}
 }
 
@@ -118,9 +124,9 @@ static const char* linktype_str(uint32_t linktype) {
 
 static const char* dsb_type_str(uint32_t sectype) {
 	switch(sectype) {
-		case DSB_TYPE_TLS_KEYLOG:			return "TLS Key Log";
+		case DSB_TYPE_TLS_KEYLOG:		return "TLS Key Log";
 		case DSB_TYPE_WIREGUARD_KEY:	return "Wireguard Key";
-		default:											return "unknown";
+		default:						return "unknown";
 	}
 }
 
@@ -174,33 +180,59 @@ static uint32_t _read(void *dst, uint32_t size) {
 	return size;
 }
 
-#define _skip(size) 		 assert(fseek(inputf, size, SEEK_CUR) == 0);
+static uint32_t _skip(uint32_t size) {
+	if(!size)
+		return 0;
+
+	assert(fseek(inputf, size, SEEK_CUR) == 0);
+	return size;
+}
 
 /* ******************************************************* */
 
 // 4.1.  Section Header Block (mandatory)
 static void read_section_header_block(uint32_t body_len) {
-	pcapng_section_hdr_block_t sect_block;
+	pcapng_section_block_hdr_t sect_block;
 
 	assert(body_len >= sizeof(sect_block));
 	body_len -= _read(&sect_block, sizeof(sect_block));
 
-	printf("  SHB v%u.%u - Len: ", sect_block.version_major,
-					sect_block.version_minor);
+	// TODO support different endianess
+	assert(sect_block.magic == SHB_MAGIC);
+
+	// parse options
+	char *user_app = NULL;
+	while(body_len >= sizeof(pcapng_block_opt_t)) {
+		pcapng_block_opt_t opt;
+
+		body_len -= _read(&opt, sizeof(pcapng_block_opt_t));
+		uint8_t padding = (~opt.length + 1) & 0x3;
+		assert((opt.length + padding) <= body_len);
+
+		if(opt.type == 0x4 /* shb_userappl */) {
+			user_app = malloc(opt.length + 1);
+			assert(user_app != NULL);
+			body_len -= _read(user_app, opt.length);
+			*(user_app + opt.length) = '\0';
+		} else
+			body_len -= _skip(opt.length + padding);
+	}
+
+	printf("  SHB v%u.%u - App: %s - Len: ", sect_block.version_major,
+					sect_block.version_minor, user_app ? user_app : "");
 	if(sect_block.section_length == (uint64_t)-1)
 		printf("unknown\n");
 	else
 		printf("%" PRIu64 "\n", sect_block.section_length);
-
-	// TODO support different endianess
-	assert(sect_block.magic == SHB_MAGIC);
 
 	if((sect_block.version_major != 1) || (sect_block.version_minor != 0)) {
 		fprintf(stderr, "unsupported PCAPNG version\n");
 		exit(1);
 	}
 
-	// skip options
+	if(user_app)
+		free(user_app);
+
 	_skip(body_len);
 }
 
@@ -321,18 +353,18 @@ int main(int argc, char *argv[]) {
 	}
 
 	while(1) {
-		pcapng_hdr_block_t hdr_block;
-		_read(&hdr_block, sizeof(hdr_block));
+		pcapng_block_hdr_t block_hdr;
+		_read(&block_hdr, sizeof(block_hdr));
 		
-		printf("[+%08lx] %s (0x%08x), Len: %u\n", ftell(inputf) - sizeof(hdr_block),
-							block_type_str(hdr_block.type), hdr_block.type,
-							hdr_block.total_length);
+		printf("[+%08lx] %s (0x%08x), Len: %u\n", ftell(inputf) - sizeof(block_hdr),
+							block_type_str(block_hdr.type), block_hdr.type,
+							block_hdr.total_length);
 		if(first_block) {
-			assert(hdr_block.type == BLOCK_TYPE_SHB);
+			assert(block_hdr.type == BLOCK_TYPE_SHB);
 			first_block = 0;
 		}
 
-		uint32_t block_tot_len = hdr_block.total_length;
+		uint32_t block_tot_len = block_hdr.total_length;
 		assert(block_tot_len >= MIN_BLOCK_SIZE);
 		assert(block_tot_len < MAX_BLOCK_SIZE);
 		if(block_tot_len % 4)
@@ -340,7 +372,7 @@ int main(int argc, char *argv[]) {
 
 		uint32_t body_len = block_tot_len - MIN_BLOCK_SIZE;
 
-		switch(hdr_block.type) {
+		switch(block_hdr.type) {
 			case BLOCK_TYPE_SHB:
 				read_section_header_block(body_len);
 				break;
