@@ -210,8 +210,10 @@ static void read_section_header_block(uint32_t body_len) {
 		assert((opt.length + padding) <= body_len);
 
 		if(opt.type == 0x4 /* shb_userappl */) {
+			assert(!user_app);
 			user_app = malloc(opt.length + 1);
-			assert(user_app != NULL);
+			assert(user_app);
+
 			body_len -= _read(user_app, opt.length);
 			*(user_app + opt.length) = '\0';
 		} else
