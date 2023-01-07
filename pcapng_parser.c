@@ -56,17 +56,17 @@ typedef struct pcapng_intf_descr_block {
 	uint16_t reserved;
 	uint32_t snaplen;
 	/* ..options.. */
-} pcapng_intf_descr_block_t;
+} __attribute__((packed)) pcapng_intf_descr_block_t;
 
 typedef struct pcapng_decr_secrets_block {
 	uint32_t secrets_type;
 	uint32_t secrets_length;
 	/* ..secrets data.. */
 	/* ..options.. */
-} pcapng_decr_secrets_block_t;
+} __attribute__((packed)) pcapng_decr_secrets_block_t;
 
 typedef struct pcapng_enh_packet_block {
-	uint16_t interface_id;
+	uint32_t interface_id;
 	uint32_t timestamp_high;
 	uint32_t timestamp_low;
 	uint32_t captured_len;
@@ -74,7 +74,7 @@ typedef struct pcapng_enh_packet_block {
 	/* ..packet data.. */
 	/* ..padding.. */
 	/* ..options.. */
-} pcapng_enh_packet_block_t;
+} __attribute__((packed)) pcapng_enh_packet_block_t;
 
 /* ******************************************************* */
 
